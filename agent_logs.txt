@@ -1,0 +1,476 @@
+# Simple command-line program
+
+## User
+
+I need to write a simple, single-file command-line program in C named `harness.c`. Keep the code as simple as possible. Do not use any external libraries, only standard ones. 
+Here is the exact technical specification:
+1. It must run an infinite `while` loop that prompts the user with `> ` and reads input using `fgets`.
+2. If the user types exactly 'exit', the loop must break and the program should terminate safely.
+3. If the user types a sentence containing the substring 'hello', it must print a hardcoded greeting.
+4. If the user types anything else, it must echo their input back to them verbatim.
+5. Please add clear, line by line comments explaining what the code is doing.
+Additionally, write a companion Bash script named `test.sh` that automatically compiles `harness.c` and pipes predefined text inputs ('hello world', a test string, and 'exit') into the compiled binary to verify functionality without human interaction.
+Provide both complete, ready-to-save files (`harness.c` and `test.sh`) in a single response without placeholders or truncated code."
+
+## Assistant
+
+I'll write both files into the workspace now.
+
+### Tool Edit File V2
+
+### Tool Edit File V2
+
+## Assistant
+
+Let me check whether a C compiler is available so I can verify the code actually compiles and runs.
+
+### Tool Run Terminal Command V2
+
+### Tool Run Terminal Command V2
+
+### Tool Run Terminal Command V2
+
+## Assistant
+
+Both files are saved to `C:\Users\theic\Desktop\Project1\`. I couldn't compile-and-run them to confirm — the shell in this session stopped returning exit statuses on all three attempts, so I have no execution results to report either way. You'll want to run `test.sh` yourself via Git Bash or WSL, since it's a Bash script and your shell here is PowerShell.
+
+Two things worth knowing about the code before you read it:
+
+The `exit` check uses `strcmp`, which matches only the exact string, so `exit now` and `Exit` fall through to the echo branch as your spec describes. Separately, I added an end-of-input check on `fgets` returning `NULL`. Your spec didn't ask for it, but without it the program would spin forever on a stale buffer once the piped input from `test.sh` runs out, so the automated test depends on it.
+
+## `harness.c`
+
+```c
+/* harness.c - a tiny interactive command loop.
+ * Reads a line at a time from standard input and reacts to it.
+ * Only the C standard library is used. */
+
+#include <stdio.h>   /* printf, fgets, fputs, stdin, stdout */
+#include <string.h>  /* strcmp, strcspn, strstr */
+
+/* Longest line we are willing to read, including the '\0' terminator. */
+#define MAX_LINE 256
+
+int main(void)
+{
+    char line[MAX_LINE]; /* storage for the line the user typed */
+
+    /* Loop forever; the only way out is the "exit" command or end of input. */
+    while (1) {
+        /* Show the prompt. printf does not add a newline here, so the
+         * cursor stays on the same line as the "> ". */
+        printf("> ");
+
+        /* stdout is often line-buffered (or fully buffered when piped), so
+         * force the prompt out to the terminal before we block on input. */
+        fflush(stdout);
+
+        /* Read at most MAX_LINE-1 characters into line, stopping at newline.
+         * fgets returns NULL on end-of-file or a read error, which happens
+         * when input comes from a pipe that has run dry or the user presses
+         * Ctrl+D / Ctrl+Z. Leave the loop cleanly in that case. */
+        if (fgets(line, sizeof line, stdin) == NULL) {
+            printf("\n"); /* keep the shell prompt on a fresh line */
+            break;
+        }
+
+        /* fgets keeps the trailing newline. strcspn returns the index of the
+         * first '\n' (or of the '\0' if there is none), so writing '\0' there
+         * trims the newline without touching anything else. */
+        line[strcspn(line, "\n")] = '\0';
+
+        /* strcmp returns 0 only when the two strings match exactly, so this
+         * matches "exit" and not "exit now" or "Exit". */
+        if (strcmp(line, "exit") == 0) {
+            printf("Goodbye!\n");
+            break; /* leave the while loop and fall through to return 0 */
+        }
+
+        /* strstr returns a pointer to the first occurrence of "hello"
+         * anywhere in the line, or NULL if it is not present. */
+        if (strstr(line, "hello") != NULL) {
+            printf("Hello there! Nice to meet you.\n");
+            continue; /* handled, so skip the echo below */
+        }
+
+        /* Anything else: repeat the input back exactly as it was typed. */
+        printf("%s\n", line);
+    }
+
+    /* Returning 0 from main exits the program with a success status. */
+    return 0;
+}
+```
+
+## `test.sh`
+
+```bash
+#!/usr/bin/env bash
+# test.sh - compile harness.c and feed it scripted input, no typing required.
+
+set -e  # stop immediately if the compile or the program fails
+
+SRC="harness.c"
+BIN="./harness"
+
+echo "== Compiling $SRC =="
+cc -Wall -Wextra -o "$BIN" "$SRC"
+echo "Compiled to $BIN"
+echo
+
+echo "== Running with scripted input =="
+# Each printf line becomes one line of stdin for the program:
+#   1. "hello world" -> should trigger the hardcoded greeting
+#   2. "this is a test string" -> should be echoed back verbatim
+#   3. "exit" -> should print the goodbye message and end the loop
+OUTPUT=$(printf 'hello world\nthis is a test string\nexit\n' | "$BIN")
+
+echo "$OUTPUT"
+echo
+
+echo "== Checking output =="
+FAILED=0
+
+# Confirm the greeting branch ran.
+if echo "$OUTPUT" | grep -q "Hello there!"; then
+    echo "PASS: 'hello world' produced the greeting"
+else
+    echo "FAIL: 'hello world' did not produce the greeting"
+    FAILED=1
+fi
+
+# Confirm the echo branch repeated our test string.
+if echo "$OUTPUT" | grep -q "this is a test string"; then
+    echo "PASS: test string was echoed back"
+else
+    echo "FAIL: test string was not echoed back"
+    FAILED=1
+fi
+
+# Confirm the exit branch ran.
+if echo "$OUTPUT" | grep -q "Goodbye!"; then
+    echo "PASS: 'exit' terminated the program"
+else
+    echo "FAIL: 'exit' did not terminate the program"
+    FAILED=1
+fi
+
+echo
+if [ "$FAILED" -eq 0 ]; then
+    echo "All tests passed."
+else
+    echo "Some tests failed."
+fi
+
+exit "$FAILED"
+```
+
+To run it: `chmod +x test.sh && ./test.sh`. The script exits with status 0 when all three checks pass and 1 otherwise, so it drops straight into CI if you need that. It invokes `cc`; if your setup only has `gcc` on the PATH, change that one line.
+
+## User
+
+The code should be able to compile using 'gcc harness.c -o harness'
+
+## Assistant
+
+Changing `test.sh` to use `gcc`, and I'll try the shell again to actually verify the compile this time.
+
+### Tool Edit File V2
+
+### Tool Run Terminal Command V2
+
+### Tool Glob File Search
+
+```
+{"targetDirectory":"C:\\Users\\theic\\Desktop\\Project1","globPattern":"harness*"}
+```
+
+## Assistant
+
+The `harness.c` source needed no changes — it's plain standard C using only `stdio.h` and `string.h`, so `gcc harness.c -o harness` is exactly the right command for it. What did need fixing was `test.sh`, which was calling `cc`; it now runs your exact command:
+
+```7:10:test.sh
+echo "== Compiling $SRC =="
+gcc "$SRC" -o harness
+echo "Compiled to $BIN"
+```
+
+I also dropped the `-Wall -Wextra` flags I had on that line so the script compiles the same way you do by hand.
+
+I still could not verify this by running it. The shell tool returned no exit status again, and a directory listing afterward shows only `harness.c` with no `harness` binary, which confirms the compile never actually executed rather than failing. So my claim that the code compiles cleanly is based on reading it, not on a successful gcc run — please run `gcc harness.c -o harness` yourself to confirm.
+
+One portability note: on Windows, `gcc` produces `harness.exe`, not `harness`. The `-o harness` flag will still work and gcc will append the extension, but `test.sh` invokes the binary as `./harness`, which resolves fine under Git Bash and MSYS2 but would fail from PowerShell. If you plan to drive the tests from PowerShell rather than Bash, tell me and I'll rework the runner.
+
+## User
+
+I will be using WSL to test.
+
+## Assistant
+
+Good — that removes the `.exe` and Bash concerns I flagged. Let me check one WSL-specific gotcha: line endings, since these files were written from Windows.
+
+### Tool Run Terminal Command V2
+
+## Assistant
+
+With WSL, `test.sh` should work as written — `gcc harness.c -o harness` produces a binary named `harness`, and `./harness` resolves normally. No changes needed to either file.
+
+The one thing that could still trip you up is line endings, and I couldn't verify it. The shell tool failed again on all attempts this session, so I never read back the raw bytes of `test.sh`. I wrote the file with Unix newlines, but the Write tool ran on Windows and I can't confirm it didn't translate them to CRLF on the way to disk. If it did, Bash in WSL will reject the script with something like `bad interpreter: /usr/bin/env bash^M`. The fix is one command:
+
+```bash
+sed -i 's/\r$//' test.sh harness.c
+```
+
+That's harmless to run even if the endings are already correct, so you may as well do it up front.
+
+To run everything:
+
+```bash
+cd /mnt/c/Users/theic/Desktop/Project1
+chmod +x test.sh
+./test.sh
+```
+
+You'll need gcc inside the WSL distro itself — the Windows-side toolchain isn't visible there. If `gcc` isn't found, `sudo apt install build-essential` on Ubuntu-based distros will get you there.
+
+Expected output is the greeting for `hello world`, the test string echoed verbatim, `Goodbye!` for `exit`, then three `PASS` lines and `All tests passed.` If any check reports `FAIL`, paste the output and I'll trace it.
+
+## User
+
+I found the following errors running the script. 
+
+env: $'bash\r': No such file or directory
+env: use -[v]S to pass options in shebang lines
+
+## Assistant
+
+That's the CRLF problem I flagged — the Write tool did convert the files to Windows line endings. Let me try to strip them directly via WSL.
+
+### Tool Run Terminal Command V2
+
+## Assistant
+
+The shell tool is still not returning results, so I couldn't run the fix for you. Please run this in your WSL terminal:
+
+```bash
+cd /mnt/c/Users/theic/Desktop/Project1
+sed -i 's/\r$//' test.sh harness.c
+./test.sh
+```
+
+That strips the carriage returns from both files in place and should clear the error completely.
+
+What happened: `env` read the shebang line as the literal command `bash\r` rather than `bash`, because every line in the file ends with `\r\n` instead of `\n`. The `use -[v]S` message is just `env` guessing you meant to pass options — it's a red herring, not a second problem.
+
+Worth knowing that fixing only the shebang wouldn't be enough. The carriage returns are on *every* line, so `BIN="./harness"` would hold `./harness\r` and fail with "command not found," and the `grep` patterns wouldn't match. That's also why running it as `bash test.sh` to bypass the shebang doesn't work — the whole file needs cleaning, which is what the `sed` above does. I included `harness.c` in the command too; gcc tolerates CRLF, but it keeps the greeting strings from carrying stray `\r` into your output.
+
+To avoid this recurring, editing these files from inside WSL (or setting your editor to LF for this project) will keep the endings Unix-style. If `./test.sh` throws anything new after the `sed`, send me the output.
+
+## User
+
+sed: preserving permissions for ‘./sedk99pk7’: Operation not permitted
+sed: preserving permissions for ‘./sedNJCOTi’: Operation not permitted
+
+## Assistant
+
+That's a warning, not a failure. `sed -i` writes a temp file and then tries to copy the original's permission bits onto it; NTFS mounted at `/mnt/c` doesn't support that operation, so the chmod fails — but the content rewrite and rename usually succeed anyway. Your files are most likely already fixed.
+
+Just try running it:
+
+```bash
+./test.sh
+```
+
+If that works, you're done and you can ignore the warning entirely.
+
+If you still get the `bash\r` error, the rewrite didn't land, and this variant avoids the temp-file dance by writing back through a redirect, which never touches permissions:
+
+```bash
+for f in test.sh harness.c; do
+  sed 's/\r$//' "$f" > /tmp/clean && cat /tmp/clean > "$f"
+done
+rm /tmp/clean
+./test.sh
+```
+
+The reason this sidesteps the problem is that `cat > "$f"` truncates and refills the existing file rather than replacing it with a new one, so there are no permissions to preserve.
+
+Separately, working directly under `/mnt/c` is what invites these issues — cross-filesystem metadata is only partly emulated, and it's slow. If you'd rather avoid the whole class of problem, `cp -r /mnt/c/Users/theic/Desktop/Project1 ~/Project1 && cd ~/Project1` puts everything on the native Linux filesystem. The tradeoff is that the copy won't reflect edits you make in Cursor on the Windows side, so it's better for a quick test run than for ongoing development.
+
+## User
+
+== Compiling harness.c ==
+Compiled to ./harness
+
+== Running with scripted input ==
+> Hello there! Nice to meet you.
+> this is a test string
+> Goodbye!
+
+== Checking output ==
+PASS: 'hello world' produced the greeting
+PASS: test string was echoed back
+PASS: 'exit' terminated the program
+
+All tests passed.
+
+## Assistant
+
+All three branches verified. The greeting fired on the `hello` substring, the arbitrary input came back verbatim, and `exit` terminated cleanly.
+
+The interleaved `> ` prompts are expected rather than a formatting bug: input arrived from a pipe, so the lines you'd normally see yourself type were never echoed, leaving each prompt adjacent to its own response.
+
+One detail in that output is a useful confirmation. There are exactly three prompts and no trailing fourth one, which means the loop exited through the `strcmp(line, "exit")` break rather than falling out via the end-of-input check — that path prints a bare newline and would have left a dangling `> `. So the `exit` command is genuinely doing the work, and the EOF handler is just there as a safety net.
+
+The files on disk are now the working versions with Unix line endings, so you can run `gcc harness.c -o harness` or `./test.sh` directly from here.
+
+## User
+
+Everything works flawlessly. The final step is too implement a tool to execute functions such as mathematical calculation that an LLM is not designed for.
+
+## Assistant
+
+Before I write this, there's one fork I can't infer from the code: how the tool should be invoked. That choice determines the parsing layer, and guessing wrong means rewriting it, so it's worth thirty seconds now.
+
+I'll structure it as a small dispatch table either way, so adding a second or third tool later is a few lines rather than a refactor.
+
+### Tool Ask Question
+
+## Assistant
+
+Building it now: a `calc` prefix command backed by a recursive-descent parser, wired through a dispatch table so future tools slot in alongside it.
+
+### Tool Edit File V2
+
+### Tool Edit File V2
+
+## Assistant
+
+Two edits — the divide-by-zero and malformed cases shared one message, which would have let the two tests pass on each other's behalf.
+
+### Tool Edit File V2
+
+### Tool Edit File V2
+
+### Tool Edit File V2
+
+### Tool Edit File V2
+
+## Assistant
+
+Both files are updated. Two things before you run it.
+
+**Re-run the line-ending fix.** I rewrote both files through the same Windows-side tool that introduced the CRLF problem earlier, so it has almost certainly come back:
+
+```bash
+cd /mnt/c/Users/theic/Desktop/Project1
+sed -i 's/\r$//' test.sh harness.c
+./test.sh
+```
+
+Ignore the "preserving permissions" warnings again if they appear.
+
+**I could not compile or run this.** The shell tool has failed on every attempt this session, so the parser is unverified — reasoned through but not executed. It's roughly 100 new lines, so treat the first run as a real test rather than a formality.
+
+## What was added
+
+Typing `calc` followed by an expression routes the line to a recursive-descent parser: one function per precedence level, where addition calls multiplication, which is what makes `2 + 3 * 4` yield 14 without any explicit precedence table. It handles `+ - * / %`, parentheses, decimals, and unary signs.
+
+The dispatch is a table rather than an `if` chain, so a second tool is one function plus one row:
+
+```186:196:harness.c
+typedef struct {
+    const char *name;
+    void (*run)(const char *args);
+} Tool;
+
+static const Tool tools[] = {
+    { "calc", tool_calc }
+};
+```
+
+Three decisions worth surfacing, since each is a place the obvious approach would have bitten:
+
+Remainder is computed by hand as `left - right * (double)(long long)(left / right)` instead of calling `fmod`, because `fmod` can require linking `-lm` on some systems and you specifically need bare `gcc harness.c -o harness` to work. The tradeoff is that a quotient exceeding `long long` range would misbehave, which no calculator input will reach.
+
+The tool name must be followed by a space or end-of-line, otherwise `calculate my taxes` would dispatch to `calc` and then fail to parse.
+
+Division by zero reports separately from a malformed expression. Without that, the two error tests in `test.sh` would each pass whenever *either* code path worked, quietly hiding a break in the other.
+
+The test script now covers precedence, parentheses, decimal results, remainder, divide-by-zero, and a malformed expression — nine checks total. If any come back `FAIL`, or gcc reports anything, send me the output.
+
+## User
+
+Provide an example of a calculation.
+
+## Assistant
+
+Here's an interactive session. In the terminal your typing is echoed, so the input sits on the prompt line and the result appears on the next:
+
+```
+> calc 2 + 3 * 4
+14
+> calc (2 + 3) * 4
+20
+> calc 10 / 4
+2.5
+> calc 10 % 3
+1
+> calc -3 + 1.5
+-1.5
+> calc 5 / 0
+calc: cannot divide by zero
+> calc
+calc: usage: calc <expression>   (example: calc 2 + 3 * 4)
+> exit
+Goodbye!
+```
+
+The first two lines are the interesting pair. `2 + 3 * 4` gives 14 rather than 20 because multiplication is evaluated first, and wrapping the addition in parentheses forces the other order. That's the behavior an LLM tends to get wrong when it pattern-matches left-to-right, and it's the reason the parser is split into precedence levels instead of scanning the operators in sequence.
+
+Under `test.sh` the output looks slightly different — piped input isn't echoed, so you'll see `> 14` with the result on the prompt line itself. That's why the test patterns match `^> 14$`.
+
+These are the outputs the code is written to produce, not a transcript of a run — the shell tool has been unavailable all session, so I still haven't executed it. Your `./test.sh` run will confirm them.
+
+## User
+
+Create a simple README file for the project for Github.
+
+### Tool Edit File V2
+
+## Assistant
+
+`README.md` is written to the project root. It covers the build command, the command table, an example session, how the calculator works, how to run the tests, and how to add another tool.
+
+I included a short section on line endings at the bottom, since the `env: 'bash\r'` failure is non-obvious and anyone cloning this on Windows will hit exactly what you hit.
+
+Two suggestions for the GitHub side. A `.gitattributes` containing `*.sh text eol=lf` would stop git from ever handing a collaborator a CRLF copy of `test.sh`, which is a more permanent fix than the `sed` command in the README. And a `.gitignore` with `harness` and `harness.exe` would keep the compiled binary out of the repo, since `test.sh` rebuilds it every run. Say the word and I'll add either or both.
+
+## User
+
+Do both.
+
+### Tool Edit File V2
+
+### Tool Edit File V2
+
+## Assistant
+
+Both files are in the project root.
+
+`.gitattributes` normalizes text files to LF in the repository and pins `*.sh`, `*.c`, and `*.h` to LF in the working tree as well, so a Windows clone still gets a runnable `test.sh`. `.gitignore` drops the `harness` binary (and `harness.exe`), plus `*.o` and `*.out`.
+
+One thing that catches people out: `.gitattributes` only takes effect when git checks files out or stages them, so it does not touch what's on your disk right now. If your local `test.sh` and `harness.c` still have CRLF endings from my last write, they need the `sed` command before they'll run:
+
+```bash
+sed -i 's/\r$//' test.sh harness.c
+```
+
+And if you've already committed these files with CRLF, the new rules won't retroactively rewrite what's in history. This restages everything under the new rules:
+
+```bash
+git add --renormalize .
+git status
+```
+
+Anything that shows up as modified there is a file whose line endings just got corrected — commit it and the repo is consistent from then on.

@@ -1,0 +1,12 @@
+# Let git decide which files are text and store them with LF in the repository.
+* text=auto
+
+# Shell scripts must be LF in the working tree, not just in the repository.
+# With CRLF endings bash refuses to start the script at all, reporting:
+#   env: 'bash\r': No such file or directory
+*.sh text eol=lf
+
+# The C source is compiled under WSL and Linux, so keep it LF too. This also
+# stops stray carriage returns ending up inside string literals.
+*.c text eol=lf
+*.h text eol=lf

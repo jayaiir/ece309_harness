@@ -1,0 +1,8 @@
+# Compiled binary from "gcc harness.c -o harness". test.sh rebuilds it on every
+# run, so there is no reason to commit it.
+harness
+harness.exe
+
+# Other compiler leftovers.
+*.o
+*.out
